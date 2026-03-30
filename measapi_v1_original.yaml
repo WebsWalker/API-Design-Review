@@ -1,0 +1,127 @@
+openapi: "2.0"
+info:
+  title: X Instruments MeasAPI
+  version: "1"
+  description: API for X Instruments LCR-3000 benchtop meter
+
+host: 192.168.1.100
+basePath: /api
+schemes:
+  - http
+
+paths:
+
+  /getMeasurement:
+    get:
+      summary: get a measurement
+      parameters:
+        - name: type
+          in: query
+          type: integer
+          description: 1=impedance, 2=capacitance, 3=resistance, 4=inductance
+        - name: freq
+          in: query
+          type: number
+          description: frequency in kHz
+        - name: apikey
+          in: query
+          type: string
+          description: your API key
+      responses:
+        200:
+          description: measurement result or error
+          schema:
+            type: object
+            properties:
+              value:
+                type: number
+              unit:
+                type: string
+              error:
+                type: string
+
+  /SetFrequency:
+    post:
+      summary: Set the test frequency
+      parameters:
+        - name: body
+          in: body
+          schema:
+            type: object
+            properties:
+              frequency:
+                type: number
+                description: frequency in MHz
+      responses:
+        200:
+          description: ok
+
+  /frequency-sweep:
+    get:
+      summary: run a frequency sweep and return all data points
+      parameters:
+        - name: start
+          in: query
+          type: number
+          description: start frequency Hz
+        - name: stop
+          in: query
+          type: number
+          description: stop frequency in kHz
+        - name: points
+          in: query
+          type: integer
+        - name: apikey
+          in: query
+          type: string
+      responses:
+        200:
+          description: all sweep data
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  type: object
+
+  /start:
+    post:
+      summary: start the device before measuring
+      responses:
+        200:
+          description: started
+
+  /stop:
+    post:
+      summary: stop the device
+      responses:
+        200:
+          description: stopped
+
+  /getAllMeasurements:
+    get:
+      summary: get all stored measurements
+      parameters:
+        - name: apikey
+          in: query
+          type: string
+      responses:
+        200:
+          description: list of all measurements
+          schema:
+            type: object
+            properties:
+              measurements:
+                type: array
+                items:
+                  type: object
+
+  /device-info:
+    get:
+      summary: get device information
+      responses:
+        200:
+          description: device info
+          schema:
+            type: object

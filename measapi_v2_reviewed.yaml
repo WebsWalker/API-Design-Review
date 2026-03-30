@@ -1,0 +1,324 @@
+openapi: "3.0.3"
+info:
+  title: X Instruments MeasAPI
+  version: "2.0.0"
+  description: >
+    REST API for the X Instruments LCR-3000 benchtop impedance analyser.
+    Provides measurement acquisition, sweep execution, and data retrieval.
+  contact:
+    name: X Instruments Support
+
+servers:
+  - url: http://{instrument_ip}/api/v2
+    variables:
+      instrument_ip:
+        default: 192.168.1.100
+        description: IP address of the instrument on the local network
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: >
+        Bearer token obtained from the instrument's local web interface.
+        Pass in Authorization header: "Authorization: Bearer <token>"
+
+  schemas:
+
+    MeasurementType:
+      type: string
+      enum: [impedance, capacitance, resistance, inductance]
+      description: Physical quantity to measure
+
+    FrequencyHz:
+      type: number
+      format: double
+      description: Frequency in Hz (always Hz throughout this API)
+      example: 10000.0
+
+    MeasurementResult:
+      type: object
+      required: [measurement_id, type, frequency_hz, value, unit, timestamp]
+      properties:
+        measurement_id:
+          type: string
+          format: uuid
+          description: Unique identifier for this measurement
+        type:
+          $ref: '#/components/schemas/MeasurementType'
+        frequency_hz:
+          $ref: '#/components/schemas/FrequencyHz'
+        value:
+          type: number
+          format: double
+        unit:
+          type: string
+          enum: [Ohm, F, H]
+          description: SI unit corresponding to the measurement type
+        timestamp:
+          type: string
+          format: date-time
+        device_serial:
+          type: string
+
+    SweepPoint:
+      type: object
+      required: [frequency_hz, value, unit]
+      properties:
+        frequency_hz:
+          $ref: '#/components/schemas/FrequencyHz'
+        value:
+          type: number
+          format: double
+        unit:
+          type: string
+          enum: [Ohm, F, H]
+
+    SweepResult:
+      type: object
+      required: [sweep_id, type, points, timestamp]
+      properties:
+        sweep_id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/MeasurementType'
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/SweepPoint'
+        timestamp:
+          type: string
+          format: date-time
+
+    DeviceStatus:
+      type: object
+      required: [serial, model, firmware, status]
+      properties:
+        serial:
+          type: string
+        model:
+          type: string
+          example: LCR-3000
+        firmware:
+          type: string
+          example: "2.1.4"
+        status:
+          type: string
+          enum: [idle, measuring, error]
+
+    MeasurementPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MeasurementResult'
+        total:
+          type: integer
+          description: Total number of stored measurements
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - device_busy
+            - invalid_frequency
+            - invalid_measurement_type
+            - measurement_failed
+            - not_found
+            - unauthorized
+        message:
+          type: string
+
+paths:
+
+  /device:
+    get:
+      operationId: getDeviceStatus
+      summary: Get device status and identity
+      tags: [Device]
+      responses:
+        "200":
+          description: Device status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceStatus'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /measurements:
+    get:
+      operationId: listMeasurements
+      summary: List stored measurements with pagination
+      tags: [Measurements]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/MeasurementType'
+      responses:
+        "200":
+          description: Paginated list of measurements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeasurementPage'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: takeMeasurement
+      summary: Trigger a single measurement
+      tags: [Measurements]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, frequency_hz]
+              properties:
+                type:
+                  $ref: '#/components/schemas/MeasurementType'
+                frequency_hz:
+                  $ref: '#/components/schemas/FrequencyHz'
+      responses:
+        "201":
+          description: Measurement taken successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeasurementResult'
+        "400":
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "409":
+          description: Device busy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /measurements/{measurement_id}:
+    get:
+      operationId: getMeasurement
+      summary: Get a single measurement by ID
+      tags: [Measurements]
+      parameters:
+        - name: measurement_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Measurement result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeasurementResult'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sweeps:
+    post:
+      operationId: runSweep
+      summary: Run a frequency sweep
+      tags: [Sweeps]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, start_hz, stop_hz, points]
+              properties:
+                type:
+                  $ref: '#/components/schemas/MeasurementType'
+                start_hz:
+                  $ref: '#/components/schemas/FrequencyHz'
+                stop_hz:
+                  $ref: '#/components/schemas/FrequencyHz'
+                points:
+                  type: integer
+                  minimum: 2
+                  maximum: 1000
+      responses:
+        "201":
+          description: Sweep completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SweepResult'
+        "400":
+          description: Invalid sweep parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "409":
+          description: Device busy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
